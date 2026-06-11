@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>cc-tracker 桌面浮标</title>
+<style>
+  html, body { margin: 0; height: 100%; background: transparent; overflow: hidden; cursor: default; }
+
+  /* 折叠态：Electron 里 SVG 的 CSS 变换不渲染，改在按钮(HTML)上做（同 AI 洞察萌宠的处理） */
+  #mascot.peek .mascot-bubble { display: none !important; }
+  #mascot.peek .mascot-body   { transform: none !important; }
+  #mascot.peek-right  { transform: translateX(50%) rotate(-90deg) !important; }
+  #mascot.peek-left   { transform: translateX(-50%) rotate(90deg) !important; }
+  #mascot.peek-bottom { transform: translateY(50%) !important; }
+  #mascot.peek-top    { transform: translateY(-50%) rotate(180deg) !important; }
+
+  /* 会话面板：点苹果展开，列出每个 CC 会话的状态，点行=把那个终端窗口拉到前台 */
+  #panel {
+    position: fixed; display: none; width: 268px; max-height: 60vh; overflow-y: auto;
+    background: #fff; border-radius: 12px; padding: 8px;
+    box-shadow: 0 12px 32px rgba(0,0,0,.22); border: 1px solid #ececed;
+    font-family: -apple-system, 'Segoe UI', 'Microsoft YaHei', sans-serif; z-index: 2147483600;
+  }
+  #panel.show { display: block; }
+  #panel .ph { font-size: 12px; color: #8a8f99; padding: 4px 8px 8px; }
+  #panel .row {
+    display: flex; align-items: center; gap: 8px; padding: 9px 8px; border-radius: 8px; cursor: pointer;
+  }
+  #panel .row:hover { background: #f5f6f8; }
+  #panel .row .dot { width: 9px; height: 9px; border-radius: 50%; flex: 0 0 auto; }
+  #panel .row .name { font-size: 13px; color: #1f2024; font-weight: 600; flex: 1 1 auto;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #panel .row .st { font-size: 11px; flex: 0 0 auto; }
+  #panel .row .ago { font-size: 11px; color: #aab0ba; flex: 0 0 auto; }
+  #panel .empty { font-size: 12px; color: #aab0ba; text-align: center; padding: 18px 8px; }
+  /* 状态色：进行中=琥珀，等你输入=红，出错=深红，空闲=灰 */
+  .s-working { background: #f59e0b; } .t-working { color: #b45309; }
+  .s-waiting { background: #e11d32; } .t-waiting { color: #b91c2e; }
+  .s-error   { background: #7f1d1d; } .t-error   { color: #7f1d1d; }
+  .s-idle    { background: #c7ccd4; } .t-idle    { color: #9aa1ab; }
+  .s-waiting { animation: dotpulse 1.1s ease-in-out infinite; }
+  @keyframes dotpulse { 0%,100%{box-shadow:0 0 0 0 rgba(225,29,50,.5)} 60%{box-shadow:0 0 0 6px rgba(225,29,50,0)} }
+
+  /* 聚焦失败/会话已关 的轻提示（点了没反应时让用户知道为什么） */
+  #toast {
+    position: fixed; display: none; max-width: 240px; z-index: 2147483601;
+    background: #1f2024; color: #fff; font-size: 12px; line-height: 1.4;
+    font-family: -apple-system, 'Segoe UI', 'Microsoft YaHei', sans-serif;
+    padding: 8px 12px; border-radius: 8px; box-shadow: 0 8px 24px rgba(0,0,0,.28);
+  }
+  #toast.show { display: block; }
+</style>
+</head>
+<body>
+<div id="panel"><div class="ph">Claude Code 会话</div><div id="rows"></div></div>
+<div id="toast"></div>
+
+<script src="./assets/mascot.js"></script>
+<script>
+(function () {
+  const B = window.desktopBridge;
+  const STATE = { working: '进行中', waiting: '等你输入', error: '出错', idle: '空闲' };
+
+  let act = { sessions: [], working: 0, waiting: 0 };
+  let doneUnread = 0;          // 徽章数字 = 未看的完成数
+  const doneStack = [];        // 已完成会话栈，新的压末尾；点徽章从末尾(最新)逐个弹出聚焦
+
+  const panel = document.getElementById('panel');
+  const rows = document.getElementById('rows');
+  const toast = document.getElementById('toast');
+  const mascot = () => document.getElementById('mascot');
+
+  // ---- 聚焦 + 失败轻提示（贴着苹果上方弹一下，几秒后消失）----
+  let toastTimer = null;
+  function showToast(msg) {
+    toast.textContent = msg;
+    const m = mascot(), r = m.getBoundingClientRect();
+    toast.classList.add('show');
+    const tw = toast.offsetWidth, th = toast.offsetHeight;
+    let left = r.left + r.width / 2 - tw / 2;
+    let top = r.top - th - 10;
+    if (top < 6) top = r.bottom + 10;
+    left = Math.max(6, Math.min(window.innerWidth - tw - 6, left));
+    toast.style.left = left + 'px'; toast.style.top = top + 'px';
+    if (toastTimer) clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => toast.classList.remove('show'), 2600);
+  }
+  function feedbackFor(res) {
+    const reason = res && res.reason;
+    if (reason === 'session_gone') return '该会话窗口已关闭';
+    if (reason === 'unreachable') return '收集器未连接，稍后重试';
+    return '没能把窗口拉到前台，请重试';
+  }
+  // 聚焦一个会话；失败则给出原因提示。返回是否成功。
+  async function focusSession(id) {
+    const res = await B.focusSession(id);
+    if (!res || !res.ok) { showToast(feedbackFor(res)); return false; }
+    return true;
+  }
+
+  function ago(sec) {
+    const d = Math.max(0, Math.floor(Date.now() / 1000 - (sec || 0)));
+    if (d < 60) return d + '秒前';
+    if (d < 3600) return Math.floor(d / 60) + '分前';
+    if (d < 86400) return Math.floor(d / 3600) + '小时前';
+    return Math.floor(d / 86400) + '天前';
+  }
+
+  function renderPanel() {
+    const list = act.sessions || [];
+    rows.innerHTML = '';
+    if (!list.length) {
+      rows.innerHTML = '<div class="empty">暂无活跃会话<br>新开一个 Claude Code 会话试试</div>';
+      return;
+    }
+    list.forEach(s => {
+      const row = document.createElement('div');
+      row.className = 'row';
+      row.title = s.focusable ? '点击：把这个会话的终端窗口拉到前台' : '该会话未能定位到终端窗口';
+      row.innerHTML =
+        '<span class="dot s-' + s.state + '"></span>' +
+        '<span class="name">' + esc(s.project) + '</span>' +
+        '<span class="st t-' + s.state + '">' + (STATE[s.state] || s.state) + '</span>' +
+        '<span class="ago">' + ago(s.since) + '</span>';
+      row.addEventListener('click', () => {
+        if (!s.focusable) { showToast('该会话未定位到终端窗口，无法聚焦'); return; }
+        focusSession(s.id);
+      });
+      rows.appendChild(row);
+    });
+  }
+  function esc(t) { const d = document.createElement('div'); d.textContent = t || ''; return d.innerHTML; }
+
+  function firstWaiting() {
+    const w = (act.sessions || []).find(s => s.state === 'waiting');
+    return w ? w.id : null;
+  }
+
+  // 点徽章：把最新一条完成会话拉到前台，未读数减一（剩下的下次再点逐个打开）
+  async function openNewestDone() {
+    if (doneUnread <= 0) return;
+    doneUnread = Math.max(0, doneUnread - 1);
+    const sid = doneStack.pop();        // 末尾 = 最新
+    Mascot.setBadge(doneUnread);        // 立刻反映剩余数
+    if (sid) await focusSession(sid);   // delta>1 时更早几条无指针 → 只减数字不聚焦
+    reconcile();
+  }
+
+  // 徽章/气泡反复由这里裁决：等你输入(红) 优先于 已完成未看(绿)
+  function reconcile() {
+    if (!window.Mascot) return;
+    if ((act.waiting || 0) > 0) {
+      Mascot.setAttention(act.waiting, { onView: () => { const id = firstWaiting(); if (id) focusSession(id); } });
+    } else {
+      Mascot.setAttention(0);
+      if (doneUnread > 0) {
+        Mascot.setBadge(doneUnread);
+        Mascot.setOnView(openNewestDone);
+      } else {
+        Mascot.setBadge(0);
+        Mascot.setOnView(null);
+      }
+    }
+    if (panel.classList.contains('show')) renderPanel();
+  }
+
+  if (window.Mascot) window.Mascot.show();
+
+  // 点苹果 = 开/关会话面板（贴着苹果定位）
+  window.MascotHome = () => {
+    if (panel.classList.contains('show')) { panel.classList.remove('show'); return; }
+    const m = mascot(); const r = m.getBoundingClientRect();
+    renderPanel();
+    panel.classList.add('show');
+    const pw = panel.offsetWidth, ph = panel.offsetHeight;
+    let left = r.left + r.width / 2 - pw / 2;
+    let top = r.top - ph - 10;                       // 默认浮在苹果上方
+    if (top < 6) top = r.bottom + 10;                // 顶部不够则放下方
+    left = Math.max(6, Math.min(window.innerWidth - pw - 6, left));
+    panel.style.left = left + 'px'; panel.style.top = top + 'px';
+  };
+
+  B.onBusy(busy => { if (window.Mascot) window.Mascot.setBusy(busy); });
+
+  B.onActivity(a => { act = a || act; reconcile(); });
+
+  B.onDone(payload => {
+    payload = payload || {};
+    doneUnread += (payload.delta > 0 ? payload.delta : 1);
+    // 只拿得到最新一条的 session_id（delta>1 时更早几条无指针），压栈供点徽章时逐个聚焦
+    const sid = payload.last && payload.last.session_id;
+    if (sid) doneStack.push(sid);
+    const title = (payload.last && payload.last.title) || '完成 ✅';
+    if (window.Mascot) { window.Mascot.show(); window.Mascot.notify(title, { duration: 4200 }); }
+    reconcile();
+  });
+
+  // 右键 = 隐藏到托盘
+  document.addEventListener('contextmenu', e => { e.preventDefault(); e.stopImmediatePropagation(); B.hide(); }, true);
+
+  // 点击穿透：光标在苹果上 或 在打开的面板上才接管输入，其余穿透到下面的软件
+  let ignoring = true;
+  function overEl(el, x, y) {
+    if (!el) return false;
+    const r = el.getBoundingClientRect();
+    return x >= r.left && x <= r.right && y >= r.top && y <= r.bottom;
+  }
+  function interactive(x, y) {
+    const m = mascot();
+    if (m && !m.hidden && overEl(m, x, y)) return true;
+    if (panel.classList.contains('show') && overEl(panel, x, y)) return true;
+    return false;
+  }
+  window.addEventListener('mousemove', e => {
+    const over = interactive(e.clientX, e.clientY);
+    if (over && ignoring) { ignoring = false; B.setIgnore(false); }
+    else if (!over && !ignoring) { ignoring = true; B.setIgnore(true); }
+  }, { passive: true });
+
+  // 点面板外的空白：关闭面板
+  window.addEventListener('mousedown', e => {
+    if (!panel.classList.contains('show')) return;
+    if (overEl(panel, e.clientX, e.clientY)) return;
+    const m = mascot(); if (m && overEl(m, e.clientX, e.clientY)) return;
+    panel.classList.remove('show');
+  }, true);
+})();
+</script>
+</body>
+</html>

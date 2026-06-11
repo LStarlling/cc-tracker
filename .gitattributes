@@ -1,0 +1,5 @@
+# 跨平台行尾：文本默认以 LF 入库（mac/linux 的 .sh/.py/.js 才能跑），
+# 仅 Windows 批处理用 CRLF。不依赖各成员本机的 core.autocrlf 设置。
+* text=auto eol=lf
+*.bat text eol=crlf
+*.png binary

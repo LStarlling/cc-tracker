@@ -1,0 +1,6 @@
+{
+  "name": "cc-tracker",
+  "version": "0.1.0",
+  "description": "把 Claude Code 各会话的进行中/已完成/等你输入状态，实时汇到桌面萌宠浮标，不用频繁切窗口确认进度。",
+  "author": { "name": "AI 洞察" }
+}

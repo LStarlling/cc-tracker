@@ -1,0 +1,10 @@
+.venv/
+desktop/node_modules/
+desktop/tray.png
+__pycache__/
+*.pyc
+collector.log
+# 本机 Claude Code 权限配置（每个 clone 者各有自己的，不入团队仓库）
+.claude/settings.local.json
+# mac Finder 产物
+.DS_Store

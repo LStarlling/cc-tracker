@@ -1,0 +1,41 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python",
+            "args": ["${CLAUDE_PLUGIN_ROOT}/scripts/capture_session.py"],
+            "timeout": 10,
+            "statusMessage": "cc-tracker: 登记会话"
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      { "hooks": [ { "type": "http", "url": "http://127.0.0.1:8765/event", "timeout": 5 } ] }
+    ],
+    "Notification": [
+      { "hooks": [ { "type": "http", "url": "http://127.0.0.1:8765/event", "timeout": 5 } ] }
+    ],
+    "PostToolUse": [
+      { "hooks": [ { "type": "http", "url": "http://127.0.0.1:8765/event", "timeout": 5 } ] }
+    ],
+    "Stop": [
+      { "hooks": [ { "type": "http", "url": "http://127.0.0.1:8765/event", "timeout": 5 } ] }
+    ],
+    "StopFailure": [
+      { "hooks": [ { "type": "http", "url": "http://127.0.0.1:8765/event", "timeout": 5 } ] }
+    ],
+    "SubagentStart": [
+      { "hooks": [ { "type": "http", "url": "http://127.0.0.1:8765/event", "timeout": 5 } ] }
+    ],
+    "SubagentStop": [
+      { "hooks": [ { "type": "http", "url": "http://127.0.0.1:8765/event", "timeout": 5 } ] }
+    ],
+    "SessionEnd": [
+      { "hooks": [ { "type": "http", "url": "http://127.0.0.1:8765/event", "timeout": 5 } ] }
+    ]
+  }
+}

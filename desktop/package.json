@@ -1,0 +1,13 @@
+{
+  "name": "cc-tracker-desktop",
+  "version": "0.1.0",
+  "private": true,
+  "description": "cc-tracker · Claude Code 任务状态桌面浮标",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron ."
+  },
+  "devDependencies": {
+    "electron": "^31.0.0"
+  }
+}
