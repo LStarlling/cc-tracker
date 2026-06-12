@@ -22,6 +22,12 @@ _SESSIONS: Dict[str, Dict[str, Any]] = {}
 _DONE_SEQ = 0
 _LAST_DONE: Optional[Dict[str, Any]] = None
 
+# 窗口定位信息（term_pid/hwnd）只在 SessionStart（唯一的 command 型 hook）抓得到。
+# 但会话可能「被剪枝(STALE/窗口暂判死) → 又被轻量 http 事件唤醒」而不经过新的 SessionStart，
+# 那条路径拿不到窗口信息 → 重建出的会话无法聚焦。这份旁路缓存让定位信息跨剪枝存活，
+# 唤醒时还原；窗口若真关了由 IsWindow 拦住，缓存陈旧无害。
+_WINDOW_INFO: Dict[str, Dict[str, Any]] = {}
+
 # 超过该时长没有任何事件 → 视为僵尸会话（CC 崩溃没发 SessionEnd），清掉避免浮标永远转圈
 STALE_SECONDS = 3 * 3600
 
@@ -51,13 +57,14 @@ def _touch(sid: str, cwd: Optional[str] = None, **extra: Any) -> Dict[str, Any]:
     """取出会话（不存在则建），刷新存活时间，写入非空的额外字段。调用方已持锁。"""
     s = _SESSIONS.get(sid)
     if s is None:
+        cached = _WINDOW_INFO.get(sid) or {}   # 剪枝前抓到的窗口定位，唤醒时还原 → 仍可聚焦
         s = {
             "id": sid,
             "project": _project_name(cwd),
             "cwd": cwd,
             "state": "idle",
-            "term_pid": None,
-            "hwnd": None,
+            "term_pid": cached.get("term_pid"),
+            "hwnd": cached.get("hwnd"),
             "sub": 0,
             "since": _now(),
             "last_seen": _now(),
@@ -93,6 +100,8 @@ def handle_event(payload: Dict[str, Any]) -> None:
             s = _touch(sid, cwd, term_pid=payload.get("term_pid"), hwnd=payload.get("hwnd"))
             s["state"] = "idle"
             s["since"] = _now()
+            if s.get("term_pid") or s.get("hwnd"):
+                _WINDOW_INFO[sid] = {"term_pid": s.get("term_pid"), "hwnd": s.get("hwnd")}
 
         elif event == "UserPromptSubmit":
             s = _touch(sid, cwd)
@@ -146,6 +155,7 @@ def handle_event(payload: Dict[str, Any]) -> None:
 
         elif event == "SessionEnd":
             _SESSIONS.pop(sid, None)
+            _WINDOW_INFO.pop(sid, None)   # 会话真正结束 → 缓存一并清掉
 
         else:
             # 未知事件：仅刷新存活，不改状态
@@ -191,14 +201,15 @@ def _session_alive(s: Dict[str, Any]) -> bool:
 def _prune() -> None:
     """清掉已死会话（关窗/杀进程）和长时间无事件的僵尸会话。调用方已持锁。"""
     now = _now()
-    dead = []
+    dead = []   # (sid, alive)：alive=False 表示窗口已销毁，缓存失效需一并清
     for sid, s in _SESSIONS.items():
-        if now - s.get("last_seen", now) > STALE_SECONDS:
-            dead.append(sid)
-        elif not _session_alive(s):
-            dead.append(sid)
-    for sid in dead:
+        alive = _session_alive(s)
+        if (now - s.get("last_seen", now) > STALE_SECONDS) or not alive:
+            dead.append((sid, alive))
+    for sid, alive in dead:
         _SESSIONS.pop(sid, None)
+        if not alive:
+            _WINDOW_INFO.pop(sid, None)   # 窗口没了→缓存陈旧；STALE 但窗口还在则保留以便唤醒后恢复聚焦
 
 
 def activity() -> Dict[str, Any]:
