@@ -61,13 +61,16 @@ macOS / Linux 用 `./run.sh` 和 `./install-hooks.sh`。装好后**新开**的 C
 
 
 交互
+
 鼠标左键点击萌宠弹出会话列表
 
 <img width="477" height="346" alt="image" src="https://github.com/user-attachments/assets/a2cc46de-5115-4a40-a80c-f2d81270e340" />
 
+
 鼠标右键点击萌宠隐藏至托盘
 
 <img width="389" height="230" alt="image" src="https://github.com/user-attachments/assets/648fcc8f-86d0-4ae5-aa3a-775373674c7d" />
+
 
 鼠标左键点击数字气泡调出待输入/已完成的会话窗口(多个窗口按时间倒序先调出最后完成的任务)
 
