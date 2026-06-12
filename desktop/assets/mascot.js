@@ -17,12 +17,14 @@
 .mascot {
   position: fixed; right: 26px; bottom: 26px;
   width: 78px; height: 92px;
-  border: none; background: transparent; cursor: pointer;
+  border: none; outline: none; background: transparent; cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
   padding: 0; z-index: 2147483000;
   filter: drop-shadow(0 8px 16px rgba(225,29,50,.22));
   animation: mascot-bob 3.2s ease-in-out infinite;
 }
 .mascot[hidden] { display: none; }
+.mascot:focus, .mascot:focus-visible { outline: none; }
 .mascot { touch-action: none; user-select: none; -webkit-user-select: none; }
 .mascot:hover { animation-play-state: paused; }
 .mascot:hover .mascot-body { transform: scale(1.05); }
