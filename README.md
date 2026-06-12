@@ -48,6 +48,23 @@ install-hooks.bat
 macOS / Linux 用 `./run.sh` 和 `./install-hooks.sh`。装好后**新开**的 Claude Code 会话即生效
 （已开的需重启）。
 
+展开状态
+<img width="163" height="151" alt="image" src="https://github.com/user-attachments/assets/d6f239fb-a223-4689-9bc8-4a8a3f724898" />
+
+折叠状态(拖动到屏幕边缘自动折叠)
+<img width="91" height="114" alt="image" src="https://github.com/user-attachments/assets/f21e554c-d555-4cbb-b4b1-50525aa09c1b" />
+<img width="160" height="142" alt="image" src="https://github.com/user-attachments/assets/4b381bfd-9483-4393-a73d-53d57aeeb2c4" />
+
+交互
+鼠标左键点击萌宠弹出会话列表
+<img width="477" height="346" alt="image" src="https://github.com/user-attachments/assets/a2cc46de-5115-4a40-a80c-f2d81270e340" />
+鼠标右键点击萌宠隐藏至托盘
+<img width="389" height="230" alt="image" src="https://github.com/user-attachments/assets/648fcc8f-86d0-4ae5-aa3a-775373674c7d" />
+鼠标左键点击数字气泡调出待输入/已完成的会话窗口(多个窗口按时间倒序先调出最后完成的任务)
+<img width="99" height="91" alt="image" src="https://github.com/user-attachments/assets/e525282d-a1af-478b-a62d-9a5d44ab0971" />
+
+
+
 ## 隐私
 
 **只读会话状态，不读会话内容**。浮标里显示的"项目名"取自会话 `cwd` 的末级目录名，不解析
